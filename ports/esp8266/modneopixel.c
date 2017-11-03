@@ -62,45 +62,9 @@ STATIC void NeoPixel_print(const mp_print_t *print, mp_obj_t self_in, mp_print_k
     mp_printf(print, "<NeoPixel %p>", self->buf);
 }
 
-STATIC mp_obj_t NeoPixel_subscr(mp_obj_t self_in, mp_obj_t index_in, mp_obj_t val_in) {
-    NeoPixel_obj_t* self = MP_OBJ_TO_PTR(self_in);
-    size_t index = mp_obj_get_int(index_in);
-    if (index >= self->n) {
-        nlr_raise(mp_obj_new_exception(&mp_type_IndexError));
-    }
-
-    if (val_in == MP_OBJ_NULL) {
-        // delete
-        nlr_raise(mp_obj_new_exception(&mp_type_NotImplementedError));
-    } else if (val_in == MP_OBJ_SENTINEL) {
-        // read
-        size_t offset = self->bpp * index;
-        mp_obj_t tuple[4];
-        tuple[1] = mp_obj_new_int(self->buf[offset++]); // g
-        tuple[0] = mp_obj_new_int(self->buf[offset++]); // r
-        tuple[2] = mp_obj_new_int(self->buf[offset++]); // b
-        if (self->bpp > 3) {
-            tuple[3] = mp_obj_new_int(self->buf[offset++]); // y
-        }
-        return mp_obj_new_tuple(self->bpp, tuple);
-    } else {
-        // write
-        size_t val_len;
-        mp_obj_t *val;
-        mp_obj_get_array(val_in, &val_len, &val);
-
-        if (val_len != self->bpp) {
-            nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_TypeError, "__setitem__ expects a tuple the same length as bytes per pixel (%d)", val_len));
-        }
-
-        size_t offset = self->bpp * index;
-        self->buf[offset++] = mp_obj_get_int(val[1]); // g
-        self->buf[offset++] = mp_obj_get_int(val[0]); // r
-        self->buf[offset++] = mp_obj_get_int(val[2]); // b
-        if (self->bpp > 3) {
-            self->buf[offset++] = mp_obj_get_int(val[3]); // y
-        }
-        return mp_const_none;
+STATIC void NeoPixel_assert_color(NeoPixel_obj_t* self, size_t tuple_len) {
+    if (tuple_len != self->bpp) {
+        nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_TypeError, "expecting a tuple of len bpp=%d", tuple_len));
     }
 }
 
@@ -110,9 +74,7 @@ STATIC mp_obj_t NeoPixel_fill(mp_obj_t self_in, mp_obj_t val_in) {
     size_t val_len;
     mp_obj_t *val;
     mp_obj_get_array(val_in, &val_len, &val);
-    if (val_len != self->bpp) {
-        nlr_raise(mp_obj_new_exception_msg_varg(&mp_type_TypeError, "fill expects a tuple the same length as bytes per pixel (%d)", val_len));
-    }
+    NeoPixel_assert_color(self, val_len);
 
     uint8_t r = mp_obj_get_int(val[0]); // r
     uint8_t g = mp_obj_get_int(val[1]); // g
@@ -139,6 +101,68 @@ STATIC mp_obj_t NeoPixel_write(mp_obj_t self_in) {
 }
 MP_DEFINE_CONST_FUN_OBJ_1(NeoPixel_write_obj, NeoPixel_write);
 
+STATIC mp_obj_t NeoPixel_subscr(mp_obj_t self_in, mp_obj_t index_in, mp_obj_t val_in) {
+    NeoPixel_obj_t* self = MP_OBJ_TO_PTR(self_in);
+    size_t index = mp_obj_get_int(index_in);
+    if (index >= self->n) {
+        nlr_raise(mp_obj_new_exception(&mp_type_IndexError));
+    }
+
+    if (val_in == MP_OBJ_NULL) {
+        // delete
+        nlr_raise(mp_obj_new_exception(&mp_type_NotImplementedError));
+    } else if (val_in == MP_OBJ_SENTINEL) {
+        // read
+        size_t offset = self->bpp * index;
+        mp_obj_t tuple[4];
+        tuple[1] = mp_obj_new_int(self->buf[offset++]); // g
+        tuple[0] = mp_obj_new_int(self->buf[offset++]); // r
+        tuple[2] = mp_obj_new_int(self->buf[offset++]); // b
+        if (self->bpp > 3) {
+            tuple[3] = mp_obj_new_int(self->buf[offset++]); // y
+        }
+        return mp_obj_new_tuple(self->bpp, tuple);
+    } else {
+        // write
+        size_t val_len;
+        mp_obj_t *val;
+        mp_obj_get_array(val_in, &val_len, &val);
+        NeoPixel_assert_color(self, val_len);
+
+        size_t offset = self->bpp * index;
+        self->buf[offset++] = mp_obj_get_int(val[1]); // g
+        self->buf[offset++] = mp_obj_get_int(val[0]); // r
+        self->buf[offset++] = mp_obj_get_int(val[2]); // b
+        if (self->bpp > 3) {
+            self->buf[offset++] = mp_obj_get_int(val[3]); // y
+        }
+        return mp_const_none;
+    }
+}
+
+STATIC void NeoPixel_attr(mp_obj_t self_in, qstr attr, mp_obj_t *dest) {
+    NeoPixel_obj_t* self = MP_OBJ_TO_PTR(self_in);
+
+    if (dest[0] != MP_OBJ_NULL) {
+        // delete/store attribute
+        nlr_raise(mp_obj_new_exception(&mp_type_NotImplementedError));
+    }
+
+    if (attr == MP_QSTR_n) {
+        dest[0] = mp_obj_new_int(self->n);
+    } else if (attr == MP_QSTR_bpp) {
+        dest[0] = mp_obj_new_int(self->bpp);
+    } else if (attr == MP_QSTR_write) {
+        dest[0] = MP_OBJ_FROM_PTR(MP_ROM_PTR(&NeoPixel_write_obj));
+        dest[1] = self_in;
+    } else if (attr == MP_QSTR_fill) {
+        dest[0] = MP_OBJ_FROM_PTR(MP_ROM_PTR(&NeoPixel_fill_obj));
+        dest[1] = self_in;
+    } else {
+        nlr_raise(mp_obj_new_exception(&mp_type_AttributeError));
+    }
+}
+
 STATIC mp_obj_t NeoPixel___del__(mp_obj_t self_in) {
     NeoPixel_obj_t *self = MP_OBJ_TO_PTR(self_in);
     m_del(uint8_t, self->buf, self->buf_size);
@@ -148,8 +172,6 @@ STATIC mp_obj_t NeoPixel___del__(mp_obj_t self_in) {
 MP_DEFINE_CONST_FUN_OBJ_1(NeoPixel___del__obj, NeoPixel___del__);
 
 STATIC const mp_rom_map_elem_t NeoPixel_locals_dict_table[] = {
-    { MP_ROM_QSTR(MP_QSTR_fill), MP_ROM_PTR(&NeoPixel_fill_obj) },
-    { MP_ROM_QSTR(MP_QSTR_write), MP_ROM_PTR(&NeoPixel_write_obj) },
     { MP_ROM_QSTR(MP_QSTR___del__), MP_ROM_PTR(&NeoPixel___del__obj) },
 };
 STATIC MP_DEFINE_CONST_DICT(NeoPixel_locals_dict, NeoPixel_locals_dict_table);
@@ -160,6 +182,7 @@ STATIC const mp_obj_type_t NeoPixel_type = {
     .make_new = NeoPixel_make_new,
     .print = NeoPixel_print,
     .subscr = NeoPixel_subscr,
+	.attr = NeoPixel_attr,
     .locals_dict = (mp_obj_dict_t*)&NeoPixel_locals_dict,
 };
 
