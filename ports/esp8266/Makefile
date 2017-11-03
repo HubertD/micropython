@@ -69,6 +69,7 @@ SRC_C = \
 	uart.c \
 	esppwm.c \
 	espneopixel.c \
+	dseg7display.c \
 	espapa102.c \
 	intr.c \
 	modpyb.c \
